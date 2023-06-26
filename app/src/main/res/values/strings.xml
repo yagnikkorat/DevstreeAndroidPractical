@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Devstree  Android Practical</string>
+    <string name="save_address">Save Address</string>
+    <string name="btn_add_address">Add Address</string>
+    <string name="btn_asc_address">ASC Address</string>
+    <string name="btn_desc_address">Desc Address</string>
+    <string name="btn_routing">Routing</string>
+</resources>
