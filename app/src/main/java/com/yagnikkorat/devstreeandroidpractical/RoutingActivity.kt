@@ -1,11 +1,10 @@
 package com.yagnikkorat.devstreeandroidpractical
 
-import android.annotation.SuppressLint
 import android.graphics.Color
-import android.os.AsyncTask
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -15,6 +14,10 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.android.libraries.places.api.Places
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -43,42 +46,6 @@ class RoutingActivity : AppCompatActivity(), OnMapReadyCallback {
                 "&mode=driving" +
                 "&key=$secret"
     }
-
-    @SuppressLint("StaticFieldLeak")
-    private inner class GetDirection(val url: String) :
-        AsyncTask<Void, Void, List<List<LatLng>>>() {
-        override fun doInBackground(vararg params: Void?): List<List<LatLng>> {
-            val client = OkHttpClient()
-            val request = Request.Builder().url(url).build()
-            val response = client.newCall(request).execute()
-            val data = response.body!!.string()
-
-            val result = ArrayList<List<LatLng>>()
-            try {
-                val respObj = Gson().fromJson(data, MapData::class.java)
-                val path = ArrayList<LatLng>()
-                for (i in 0 until respObj.routes[0].legs[0].steps.size) {
-                    path.addAll(decodePolyline(respObj.routes[0].legs[0].steps[i].polyline.points))
-                }
-                result.add(path)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            return result
-        }
-
-        override fun onPostExecute(result: List<List<LatLng>>) {
-            val lineoption = PolylineOptions()
-            for (i in result.indices) {
-                lineoption.addAll(result[i])
-                lineoption.width(10f)
-                lineoption.color(Color.GREEN)
-                lineoption.geodesic(true)
-            }
-            mMap.addPolyline(lineoption)
-        }
-    }
-
     fun decodePolyline(encoded: String): List<LatLng> {
         val poly = ArrayList<LatLng>()
         var index = 0
@@ -140,7 +107,7 @@ class RoutingActivity : AppCompatActivity(), OnMapReadyCallback {
                     LatLng(addAddr[i].latitude!!, addAddr[i].longitude!!),
                     apiKey
                 )
-                GetDirection(urll).execute()
+                getDirection(urll)
             }
             mMap.animateCamera(
                 CameraUpdateFactory.newLatLngZoom(
@@ -150,6 +117,45 @@ class RoutingActivity : AppCompatActivity(), OnMapReadyCallback {
                     ), 14F
                 )
             )
+        }
+    }
+
+    private fun getDirection(url: String) {
+        lifecycleScope.launch {
+
+            val result = async(Dispatchers.IO) {
+                val client = OkHttpClient()
+                val request = Request.Builder().url(url).build()
+                val response = client.newCall(request).execute()
+                val data = response.body!!.string()
+
+                val result = ArrayList<List<LatLng>>()
+                try {
+                    val respObj = Gson().fromJson(data, MapData::class.java)
+                    val path = ArrayList<LatLng>()
+                    for (i in 0 until respObj.routes[0].legs[0].steps.size) {
+                        path.addAll(decodePolyline(respObj.routes[0].legs[0].steps[i].polyline.points))
+                    }
+                    result.add(path)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                return@async result
+            }
+
+            val finalResult = result.await()
+            if (finalResult.size > 0) {
+                withContext(Dispatchers.Main) {
+                    val lineoption = PolylineOptions()
+                    for (i in finalResult.indices) {
+                        lineoption.addAll(finalResult[i])
+                        lineoption.width(10f)
+                        lineoption.color(Color.GREEN)
+                        lineoption.geodesic(true)
+                    }
+                    mMap.addPolyline(lineoption)
+                }
+            }
         }
     }
 }
